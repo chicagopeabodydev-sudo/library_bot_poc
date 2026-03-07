@@ -6,7 +6,7 @@ description: Used to supplement the data LLMs can use when answering questions b
 # When to use this skill
 Use this skill to take custom data in various formats, such as .pdf or .md (markdown), and convert it into a format that can be consumed by LLMs when answering questions. This process is known as retrieval augmented generation (RAG).
 
-## Key steps when using Llmama-index for RAG
+## Key steps when using LlamaIndex for RAG
 - 1. LOADING data is ingesting supplied data, such as markdown files, and processing them into "documents" and "nodes".
 - 2. INDEXING then processes the documents and nodes using an embedding model to generate an "index".
 - 3. STORING the index (embedding results), typically in a vector database.
@@ -18,36 +18,45 @@ Use this skill to take custom data in various formats, such as .pdf or .md (mark
 ### Nodes are atomic units of data in LlamaIndex and represent “chunks” of a source document.
 ### Node parsers are a simple abstraction that take a list of documents and chunk them into node objects, such that each node is a specific chunk of the parent document.
 ### Example syntax using the markdown parser to get nodes:
-    - python
-    from llama_index.core.node_parser import MarkdownNodeParser
 
-    parser = MarkdownNodeParser()
-    nodes = parser.get_nodes_from_documents(markdown_docs)
+```python
+from llama_index.core.node_parser import MarkdownNodeParser
+
+parser = MarkdownNodeParser()
+nodes = parser.get_nodes_from_documents(markdown_docs)
+```
 
 
 ## Indexing means creating a data structure that allows for semantic-querying of the data later.
 ### For LLMs this nearly always means creating vector embeddings using an embedding model.
 ### Indexes can be created from nodes or from documents (by using "from_documents()").
 - Example to create an index from a document:
-    - python
-    index = VectorStoreIndex.from_documents(documents)
+
+```python
+index = VectorStoreIndex.from_documents(documents)
+```
+
 - Example to create an index from nodes:
-    - python
-    index = VectorStoreIndex(nodes)
+
+```python
+index = VectorStoreIndex(nodes)
+```
 
 
 ## Storing an index typically uses a Vector Store.
 ### LlamaIndex supports many types of Vector Stores including pgvector on Supabase or chomadb.
 - Example syntax (assumes the "vector_store" and "storage_context" already exist):
-    - python
-    # step 1 - load your index from stored vectors
-    index = VectorStoreIndex.from_vector_store(
-        vector_store, storage_context=storage_context
-    )
 
-    # step 2 - create a query engine
-    query_engine = index.as_query_engine()
-    response = query_engine.query("What is llama2?")
+```python
+# step 1 - load your index from stored vectors
+index = VectorStoreIndex.from_vector_store(
+    vector_store, storage_context=storage_context
+)
+
+# step 2 - create a query engine
+query_engine = index.as_query_engine()
+response = query_engine.query("What is llama2?")
+```
 
 
 ## Querying is a prompt call to an LLM using a QueryEngine
@@ -63,11 +72,13 @@ Use this skill to take custom data in various formats, such as .pdf or .md (mark
     - 3. Response Synthesis - when your query, your most-relevant data, and your prompt are combined and sent to your LLM to get a response.
 
     - Example creating a retriever:
-    - python
-        retriever = VectorIndexRetriever(
-            index=index,
-            similarity_top_k=10,
-        )
+
+```python
+retriever = VectorIndexRetriever(
+    index=index,
+    similarity_top_k=10,
+)
+```
 
 ## After a retriever fetches relevant nodes, a BaseSynthesizer synthesizes the final response by combining the information.
 ### To configure use the "response_mode" property of the retriever
@@ -83,7 +94,7 @@ Use this skill to take custom data in various formats, such as .pdf or .md (mark
 
 ## Additional Resources
 - For usage examples, see [examples.md](examples.md)
-- Documentation home page [Documentation](https://docs.crawl4ai.com/)
+- [LlamaIndex documentation](https://docs.llamaindex.ai/)
 - Loading data documentation [Loading-Documents](https://developers.llamaindex.ai/python/framework/understanding/rag/loading/)
 - Indexing documentation [Indexing-Documents](https://developers.llamaindex.ai/python/framework/understanding/rag/indexing/)
 - Storing embedding results documentation [Storing-Indexed-Data](https://developers.llamaindex.ai/python/framework/understanding/rag/storing/)
