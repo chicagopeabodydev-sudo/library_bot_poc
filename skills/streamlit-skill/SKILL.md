@@ -1,6 +1,6 @@
 ---
 name: streamlit-skill
-description: Used generate simple user interfaces that are defined in the python programming language.
+description: Builds simple user interfaces in Python. Use when creating chatbots, dashboards, or data apps with Streamlit—especially chat UIs with st.chat_message and st.chat_input, or when the user mentions Streamlit.
 ---
 
 # When to use this skill
@@ -23,12 +23,17 @@ Use this skill when user interfaces are needed, such as an interface to communic
 - st.empty containers can be written to in sequence and will always show the last thing written. They can also be cleared with an additional .empty() called like a method.
 - st.dataframe and st.table can be updated with the add_rows() method to append data
 - st.progress elements can be updated with additional .progress() calls. They can also be cleared with a .empty() method call.
-    st.status containers have an .update() method to change their labels, expanded state, and status.
-    st.toast messages can be updated in place with additional .toast() calls.
+- st.status containers have an .update() method to change their labels, expanded state, and status.
+- st.toast messages can be updated in place with additional .toast() calls.
 
+
+## Chatbot UI (st.chat_message, st.chat_input)
+
+For chat interfaces, use `st.chat_message(role)` to display messages and `st.chat_input()` to accept user text. Store message history in `st.session_state.messages` and iterate to render the conversation. See Example 6 in [examples.md](examples.md).
 
 ## Additional Resources
+
 - For usage examples, see [examples.md](examples.md)
-- Documentation home page [Documentation](https://docs.streamlit.io/)
-- Brief reference of all functions[Streamlit-quick-reference](https://docs.streamlit.io/develop/quick-reference/cheat-sheet)
-- Animate or update elements [Animate-update](https://docs.streamlit.io/develop/concepts/design/animate)
+- [Streamlit documentation](https://docs.streamlit.io/)
+- [Quick reference / cheat sheet](https://docs.streamlit.io/develop/quick-reference/cheat-sheet)
+- [Animate or update elements](https://docs.streamlit.io/develop/concepts/design/animate)
