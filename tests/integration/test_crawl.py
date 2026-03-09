@@ -31,6 +31,7 @@ async def test_crawl_completes_and_writes_markdown_files(tmp_path: Path, monkeyp
         )
 
     monkeypatch.setenv("CRAWL_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("CRAWL_RUN_INDEX", "0")  # Skip indexing; test only verifies crawl output
 
     await main()
 

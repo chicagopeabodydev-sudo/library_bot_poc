@@ -3,8 +3,9 @@
 Load markdown from website-markdown/, index with LlamaIndex, and store in Supabase pgvector.
 
 Reads configuration from environment variables:
-  DATABASE_URL   - PostgreSQL connection string for Supabase (required)
-  OPENAI_API_KEY - Used for embeddings (required)
+  DATABASE_URL     - PostgreSQL connection string for Supabase (required)
+  OPENAI_API_KEY   - Used for embeddings (required)
+  CRAWL_OUTPUT_DIR - Input directory for markdown files (default: website-markdown)
 """
 
 import logging
@@ -16,7 +17,7 @@ from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreI
 from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.vector_stores.supabase import SupabaseVectorStore
 
-INPUT_DIR = "website-markdown"
+DEFAULT_INPUT_DIR = "website-markdown"
 COLLECTION_NAME = "website_docs"
 EMBEDDING_DIMENSION = 1536  # OpenAI text-embedding-3-small
 
@@ -39,7 +40,8 @@ def main() -> None:
         logger.error("OPENAI_API_KEY environment variable is required")
         raise SystemExit(1)
 
-    input_path = Path(INPUT_DIR)
+    input_dir = os.environ.get("CRAWL_OUTPUT_DIR", DEFAULT_INPUT_DIR)
+    input_path = Path(input_dir)
     if not input_path.exists():
         logger.error("Input directory %s does not exist. Run the crawl script first.", input_path)
         raise SystemExit(1)

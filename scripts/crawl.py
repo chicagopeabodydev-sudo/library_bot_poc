@@ -6,13 +6,16 @@ Reads configuration from environment variables:
   CRAWL_URL        - Home page URL to start crawling (required)
   CRAWL_MAX_DEPTH  - Max depth levels to crawl (default: 2)
   CRAWL_MAX_PAGES  - Max number of pages to crawl (default: 30)
-  CRAWL_OUTPUT_DIR - Output directory for markdown files (default: website-markdown)
+  CRAWL_OUTPUT_DIR  - Output directory for markdown files (default: website-markdown)
+  CRAWL_RUN_INDEX   - If 1 (default), run indexing after crawl; if 0, skip indexing
+  CRAWL_CLEAR_OUTPUT - If 1 (default), clear output dir before crawling; if 0, do not clear
 """
 
 import asyncio
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -20,6 +23,13 @@ from dotenv import load_dotenv
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+
+# Ensure project root is on path so we can import scripts.index
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+from scripts.index import main as run_index
 
 OUTPUT_DIR = "website-markdown"
 
@@ -81,8 +91,15 @@ async def main() -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     logger.info("Output directory: %s", output_path.resolve())
 
+    if os.environ.get("CRAWL_CLEAR_OUTPUT", "1") != "0":
+        cleared = list(output_path.glob("*.md"))
+        for f in cleared:
+            f.unlink()
+        if cleared:
+            logger.info("Cleared %d existing files from %s", len(cleared), output_path)
+
     async with AsyncWebCrawler() as crawler:
-        raw_results = await crawler.arun(url, config=config)
+        raw_results = await crawler.arun(url, config=config)  # type: ignore
 
     # arun returns a list for deep crawls, or single result for single-page
     results = raw_results if isinstance(raw_results, list) else [raw_results]
@@ -112,6 +129,9 @@ async def main() -> None:
         logger.info("Wrote %s (%d bytes)", filepath, len(markdown))
 
     logger.info("Crawl complete: %d pages crawled, %d files written", len(results), written)
+
+    if written > 0 and os.environ.get("CRAWL_RUN_INDEX", "1") != "0":
+        run_index()
 
 
 if __name__ == "__main__":
