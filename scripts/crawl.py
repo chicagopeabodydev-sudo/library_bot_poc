@@ -3,9 +3,10 @@
 Crawl a website using Crawl4AI and save markdown to website-markdown/.
 
 Reads configuration from environment variables:
-  CRAWL_URL       - Home page URL to start crawling (required)
-  CRAWL_MAX_DEPTH - Max depth levels to crawl (default: 2)
-  CRAWL_MAX_PAGES - Max number of pages to crawl (default: 30)
+  CRAWL_URL        - Home page URL to start crawling (required)
+  CRAWL_MAX_DEPTH  - Max depth levels to crawl (default: 2)
+  CRAWL_MAX_PAGES  - Max number of pages to crawl (default: 30)
+  CRAWL_OUTPUT_DIR - Output directory for markdown files (default: website-markdown)
 """
 
 import asyncio
@@ -62,6 +63,7 @@ async def main() -> None:
 
     max_depth = int(os.environ.get("CRAWL_MAX_DEPTH", "2"))
     max_pages = int(os.environ.get("CRAWL_MAX_PAGES", "30"))
+    output_dir = os.environ.get("CRAWL_OUTPUT_DIR", OUTPUT_DIR)
 
     logger.info("Starting crawl: url=%s max_depth=%s max_pages=%s", url, max_depth, max_pages)
 
@@ -75,7 +77,7 @@ async def main() -> None:
         verbose=True,
     )
 
-    output_path = Path(OUTPUT_DIR)
+    output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     logger.info("Output directory: %s", output_path.resolve())
 

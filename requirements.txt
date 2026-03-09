@@ -4,3 +4,5 @@ llama-index
 llama-index-vector-stores-supabase
 llama-index-embeddings-openai
 openai
+pytest
+pytest-asyncio

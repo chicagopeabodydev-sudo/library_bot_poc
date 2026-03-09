@@ -41,3 +41,15 @@ Environment variables:
 - `OPENAI_API_KEY` - Used for embeddings (required)
 
 Get the connection string from Supabase: Project Settings → Database → Connection string (URI).
+
+## Tests
+
+Run tests from the project root:
+
+```bash
+pytest tests/ -v
+# or run only integration tests:
+pytest tests/integration/ -v
+```
+
+The crawl integration test (`tests/integration/test_crawl.py`) performs real HTTP requests and requires `.env` with `CRAWL_URL` configured. If `.env` is missing or `CRAWL_URL` is not set, the test is skipped with a warning.
