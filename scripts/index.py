@@ -14,12 +14,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import MarkdownNodeParser
+from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
+from llama_index.core.schema import MetadataMode, TextNode
 from llama_index.vector_stores.supabase import SupabaseVectorStore
 
 DEFAULT_INPUT_DIR = "website-markdown"
 COLLECTION_NAME = "website_docs"
 EMBEDDING_DIMENSION = 1536  # OpenAI text-embedding-3-small
+EMBED_CHUNK_SIZE = 1024
+EMBED_CHUNK_OVERLAP = 100
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,10 +31,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    load_dotenv()
+def chunk_nodes_for_embeddings(nodes: list) -> list[TextNode]:
+    """Split parsed markdown nodes into embedding-safe chunks."""
+    splitter = SentenceSplitter(
+        chunk_size=EMBED_CHUNK_SIZE,
+        chunk_overlap=EMBED_CHUNK_OVERLAP,
+    )
+    chunked_nodes: list[TextNode] = []
 
-    database_url = os.environ.get("DATABASE_URL")
+    for node in nodes:
+        text = node.get_content(metadata_mode=MetadataMode.NONE).strip()
+        if not text:
+            continue
+
+        chunks = splitter.split_text_metadata_aware(
+            text,
+            node.get_metadata_str(mode=MetadataMode.EMBED),
+        )
+        for chunk in chunks:
+            chunked_nodes.append(
+                TextNode(
+                    text=chunk,
+                    metadata=dict(node.metadata),
+                    excluded_embed_metadata_keys=list(node.excluded_embed_metadata_keys),
+                    excluded_llm_metadata_keys=list(node.excluded_llm_metadata_keys),
+                    metadata_template=node.metadata_template,
+                    metadata_separator=node.metadata_separator,
+                    text_template=node.text_template,
+                )
+            )
+
+    return chunked_nodes
+
+
+def main() -> None:
+    # Prefer the project's .env values over any stale shell exports.
+    load_dotenv(override=True)
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
     if not database_url:
         logger.error("DATABASE_URL environment variable is required")
         raise SystemExit(1)
@@ -61,8 +98,16 @@ def main() -> None:
 
     logger.info("Parsing markdown into nodes")
     parser = MarkdownNodeParser()
-    nodes = parser.get_nodes_from_documents(documents)
-    logger.info("Created %d nodes", len(nodes))
+    markdown_nodes = parser.get_nodes_from_documents(documents)
+    logger.info("Created %d markdown nodes", len(markdown_nodes))
+
+    logger.info(
+        "Splitting markdown nodes into embedding-safe chunks (size=%d, overlap=%d)",
+        EMBED_CHUNK_SIZE,
+        EMBED_CHUNK_OVERLAP,
+    )
+    nodes = chunk_nodes_for_embeddings(markdown_nodes)
+    logger.info("Prepared %d embedding chunks", len(nodes))
 
     logger.info("Connecting to Supabase and creating index")
     vector_store = SupabaseVectorStore(
