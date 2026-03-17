@@ -59,7 +59,7 @@ def extract_markdown(result) -> str:
     if md is None:
         return ""
     if hasattr(md, "raw_markdown"):
-        return md.raw_markdown or ""
+        return md.fit_markdown or ""
     return str(md)
 
 

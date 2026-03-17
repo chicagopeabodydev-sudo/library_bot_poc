@@ -10,16 +10,24 @@ Reads configuration from environment variables:
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import MarkdownNodeParser
-from llama_index.vector_stores.supabase import SupabaseVectorStore
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
+from llama_index.core.schema import MetadataMode, TextNode
+
+# Ensure project root is on path so we can import sibling script modules.
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+from scripts.rag import COLLECTION_NAME, configure_llamaindex, create_storage_context, get_required_env
 
 DEFAULT_INPUT_DIR = "website-markdown"
-COLLECTION_NAME = "website_docs"
-EMBEDDING_DIMENSION = 1536  # OpenAI text-embedding-3-small
+EMBED_CHUNK_SIZE = 1024
+EMBED_CHUNK_OVERLAP = 100
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,17 +36,51 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def chunk_nodes_for_embeddings(nodes: list) -> list[TextNode]:
+    """Split parsed markdown nodes into embedding-safe chunks."""
+    splitter = SentenceSplitter(
+        chunk_size=EMBED_CHUNK_SIZE,
+        chunk_overlap=EMBED_CHUNK_OVERLAP,
+    )
+    chunked_nodes: list[TextNode] = []
+
+    for node in nodes:
+        text = node.get_content(metadata_mode=MetadataMode.NONE).strip()
+        if not text:
+            continue
+
+        chunks = splitter.split_text_metadata_aware(
+            text,
+            node.get_metadata_str(mode=MetadataMode.EMBED),
+        )
+        for chunk in chunks:
+            chunked_nodes.append(
+                TextNode(
+                    text=chunk,
+                    metadata=dict(node.metadata),
+                    excluded_embed_metadata_keys=list(node.excluded_embed_metadata_keys),
+                    excluded_llm_metadata_keys=list(node.excluded_llm_metadata_keys),
+                    metadata_template=node.metadata_template,
+                    metadata_separator=node.metadata_separator,
+                    text_template=node.text_template,
+                )
+            )
+
+    return chunked_nodes
+
+
 def main() -> None:
-    load_dotenv()
+    # Prefer the project's .env values over any stale shell exports.
+    load_dotenv(override=True)
 
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        logger.error("DATABASE_URL environment variable is required")
+    try:
+        database_url = get_required_env("DATABASE_URL")
+        get_required_env("OPENAI_API_KEY")
+    except ValueError as exc:
+        logger.error("%s", exc)
         raise SystemExit(1)
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        logger.error("OPENAI_API_KEY environment variable is required")
-        raise SystemExit(1)
+    configure_llamaindex(enable_llm=False)
 
     input_dir = os.environ.get("CRAWL_OUTPUT_DIR", DEFAULT_INPUT_DIR)
     input_path = Path(input_dir)
@@ -61,16 +103,19 @@ def main() -> None:
 
     logger.info("Parsing markdown into nodes")
     parser = MarkdownNodeParser()
-    nodes = parser.get_nodes_from_documents(documents)
-    logger.info("Created %d nodes", len(nodes))
+    markdown_nodes = parser.get_nodes_from_documents(documents)
+    logger.info("Created %d markdown nodes", len(markdown_nodes))
+
+    logger.info(
+        "Splitting markdown nodes into embedding-safe chunks (size=%d, overlap=%d)",
+        EMBED_CHUNK_SIZE,
+        EMBED_CHUNK_OVERLAP,
+    )
+    nodes = chunk_nodes_for_embeddings(markdown_nodes)
+    logger.info("Prepared %d embedding chunks", len(nodes))
 
     logger.info("Connecting to Supabase and creating index")
-    vector_store = SupabaseVectorStore(
-        postgres_connection_string=database_url,
-        collection_name=COLLECTION_NAME,
-        dimension=EMBEDDING_DIMENSION,
-    )
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    storage_context = create_storage_context(database_url=database_url)
 
     index = VectorStoreIndex(nodes, storage_context=storage_context)
 

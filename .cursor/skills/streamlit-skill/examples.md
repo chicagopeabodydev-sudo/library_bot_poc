@@ -105,6 +105,8 @@ st.write(pd.DataFrame({
 
 Chat interface using `st.chat_message()` for message bubbles and `st.chat_input()` for user input. Message history is stored in `st.session_state.messages`.
 
+NOTE: this example uses OpenAI to answer questions which is not always the endpoint for questioned entered into a chat interface -- just focus on the steamlit code to accept questions and return LLM results
+
 ```python
 from openai import OpenAI
 import streamlit as st
