@@ -192,9 +192,12 @@ async def main():
         )
 
         if result.success:
-            # 5. The extracted content is presumably JSON
-            data = json.loads(result.extracted_content)
-            print("Extracted items:", data)
+            # 5. The extracted content may be JSON, but can also be missing
+            if result.extracted_content:
+                data = json.loads(result.extracted_content)
+                print("Extracted items:", data)
+            else:
+                print("No extracted content returned.")
 
             # 6. Show usage stats
             llm_strategy.show_usage()  # prints token usage
@@ -315,8 +318,9 @@ async def main():
         result = await crawler.arun("https://example.com/docs", config=config)
 
         if result.success:
-            raw_markdown = result.markdown.raw_markdown
-            fit_markdown = result.markdown.fit_markdown
+            markdown_obj = result.markdown
+            raw_markdown = getattr(markdown_obj, "raw_markdown", str(markdown_obj or ""))
+            fit_markdown = getattr(markdown_obj, "fit_markdown", None)
 
             print("Raw markdown length:", len(raw_markdown))
             print("Fit markdown length:", len(fit_markdown or ""))
