@@ -82,7 +82,50 @@ class CrawlResult(BaseModel):
     tables: List[Dict] = Field(default_factory=list)
 ```
 
+---
+
+## LLM Extraction
+- Can be used to format results based on a supplied schema (pydantic model)
+### Steps:
+- 1. Chunking (optional): The HTML or markdown is split into smaller segments if it’s very long (based on chunk_token_threshold, overlap, etc.).
+- 2. Prompt Construction: For each chunk, the library forms a prompt that includes your instruction (and possibly schema or examples).
+- 3. LLM Inference: Each chunk is sent to the model in parallel or sequentially (depending on your concurrency).
+- 4. Combining: The results from each chunk are merged and parsed into JSON.
+
+    - "schema": The model tries to return JSON conforming to your Pydantic-based schema. You provide schema=YourPydanticModel.model_json_schema()
+    - "block": The model returns freeform text, or smaller JSON structures, which the library collects.
+
+```python
+from pydantic import BaseModel, Field
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig
+from crawl4ai import LLMExtractionStrategy
+
+# step 1 - define a Pydantic model
+class Product(BaseModel):
+    name: str
+    price: str
+
+# step 2 - assign the Pydantic model to "schema" of LLMExtractionStrategy
+async def main():
+    llm_strategy = LLMExtractionStrategy(
+        llm_config = LLMConfig(provider="openai/gpt-4o-mini", api_token=os.getenv('OPENAI_API_KEY')),
+        schema=Product.model_json_schema(), # Or use model_json_schema()
+        extraction_type="schema",
+        instruction="Extract all product objects with 'name' and 'price' from the content.",
+        chunk_token_threshold=1000,
+        overlap_rate=0.0,
+        apply_chunking=True,
+        input_format="markdown",   # or "html", "fit_markdown"
+        extra_args={"temperature": 0.0, "max_tokens": 800}
+    )
+
+    # remaining crawler code here...
+```
+
+---
+
 ## Additional Resources
 - For usage examples, see [examples.md](examples.md)
 - [Crawl4AI documentation](https://docs.crawl4ai.com/)
 - [Deep crawling documentation](https://docs.crawl4ai.com/core/deep-crawling/)
+- [LLM Extraction](https://docs.crawl4ai.com/extraction/llm-strategies/)
