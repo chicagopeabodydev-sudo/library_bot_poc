@@ -2,6 +2,8 @@
 
 A RAG system with a chatbot. Content is crawled from a website and indexed for retrieval.
 
+NeMo Guardrails dependency and environment settings are included to prepare for adding input, retrieval, and output guardrails to the question-answering flow. The current runtime does not apply those guardrails yet.
+
 ## Streamlit UI
 
 Ask questions in a local browser UI backed by the existing Supabase/LlamaIndex index:
@@ -81,6 +83,26 @@ Environment variables:
 - `QUERY_TEXT` - Optional non-UI fallback question for the CLI script
 
 The CLI script is useful for quick debugging, but the primary question-answering workflow is the Streamlit UI. The current app uses a chat-style interface over single-turn retrieval and does not yet implement conversational memory or streaming.
+
+## Guardrails Configuration
+
+The repository is prepared for a NeMo Guardrails configuration that will live in `guardrails/` by default.
+
+Install dependencies from `requirements.txt`, which now includes `nemoguardrails[openai]` so NeMo Guardrails uses the existing OpenAI model setup for this project.
+
+Environment variables:
+- `GUARDRAILS_ENABLED` - Enables or disables guardrail integration once the runtime wiring is added. Suggested values are `1` or `0`.
+- `GUARDRAILS_CONFIG_DIR` - Directory that will contain the NeMo Guardrails config files. Default example value: `guardrails`
+
+Planned guardrailed runtime flow:
+1. Accept the user question in Streamlit or from `QUERY_TEXT`.
+2. Apply input guardrails to the question.
+3. Retrieve candidate context from the existing Supabase-backed index.
+4. Apply retrieval guardrails to the retrieved RAG content.
+5. Generate an answer with the existing OpenAI-backed query model.
+6. Apply output guardrails to the final answer before returning it to the user.
+
+At this stage, the configuration surface is documented and available in `.env.example`, but the runtime query flow still behaves as described in the sections above.
 
 ## Tests
 

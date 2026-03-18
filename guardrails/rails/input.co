@@ -1,0 +1,8 @@
+import core
+
+flow library input blocked terms
+  $is_allowed = await CheckLibraryInputAction()
+
+  if not $is_allowed
+    bot say "Sorry, I can only help with safe questions about the indexed library website."
+    abort

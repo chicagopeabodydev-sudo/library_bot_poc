@@ -1,0 +1,8 @@
+import core
+
+flow library output blocked terms
+  $is_allowed = await CheckLibraryOutputAction()
+
+  if not $is_allowed
+    bot say "Sorry, I can't provide that response."
+    abort

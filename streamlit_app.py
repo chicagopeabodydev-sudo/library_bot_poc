@@ -6,9 +6,14 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
+except ImportError:
+    def load_dotenv(*args: Any, **kwargs: Any) -> bool:
+        return False
 
-from scripts.query import build_query_engine, extract_sources, run_query
+from scripts.guardrails import run_guardrailed_query
+from scripts.query import build_query_engine
 from scripts.rag import COLLECTION_NAME, get_required_env
 
 APP_TITLE = "Library Bot"
@@ -47,8 +52,8 @@ def render_sources(sources: list[dict[str, Any]]) -> None:
 
 
 @st.cache_resource(show_spinner=False)
-def get_cached_query_engine() -> Any:
-    """Build the shared query engine once per Streamlit session."""
+def get_cached_query_pipeline() -> Any:
+    """Build the shared retrieval/synthesis pipeline once per session."""
     database_url = get_required_env("DATABASE_URL")
     return build_query_engine(database_url=database_url)
 
@@ -66,12 +71,12 @@ def main() -> None:
         st.write("Use `QUERY_TEXT` only as the CLI fallback for `python scripts/query.py`.")
 
     try:
-        query_engine = get_cached_query_engine()
+        query_pipeline = get_cached_query_pipeline()
     except ValueError as exc:
         st.error(str(exc))
         st.stop()
-    except Exception as exc:
-        st.error(f"Unable to load the query engine: {exc}")
+    except Exception:
+        st.error("Unable to load the query pipeline. Check configuration and try again.")
         st.stop()
 
     if "messages" not in st.session_state:
@@ -96,16 +101,16 @@ def main() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Searching the library index..."):
                 try:
-                    response = run_query(prompt, query_engine=query_engine)
+                    result = run_guardrailed_query(prompt, query_pipeline=query_pipeline)
                 except ValueError as exc:
                     st.error(str(exc))
                     return
-                except Exception as exc:
-                    st.error(f"Query failed: {exc}")
+                except Exception:
+                    st.error("Sorry, the app couldn't answer that question right now.")
                     return
 
-            answer_text = str(response)
-            sources = extract_sources(response)
+            answer_text = result.answer_text
+            sources = result.sources
 
             st.write(answer_text)
             render_sources(sources)

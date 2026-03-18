@@ -1,0 +1,8 @@
+import core
+
+flow library retrieval safety
+  $is_allowed = await CheckRetrievedContextAction()
+
+  if not $is_allowed
+    bot say "Sorry, I couldn't find approved source material to answer that safely."
+    abort
