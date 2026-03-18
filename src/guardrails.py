@@ -25,7 +25,7 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from guardrails.actions import LIBRARY_TOPIC_HINTS
-from scripts import query
+from src import query
 
 DEFAULT_GUARDRAILS_DIR = "guardrails"
 DEFAULT_BLOCKED_INPUT_MESSAGE = "Sorry, I can only help with safe questions about the indexed library website."
@@ -173,6 +173,7 @@ def run_guardrailed_query(
         similarity_top_k=similarity_top_k,
     )
     approved_nodes = filter_retrieved_nodes(retrieved_nodes)
+    approved_nodes = query.select_nodes_for_query(approved_question, approved_nodes)
 
     if not approved_nodes:
         return GuardrailedQueryResult(

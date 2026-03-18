@@ -12,9 +12,9 @@ except ImportError:
     def load_dotenv(*args: Any, **kwargs: Any) -> bool:
         return False
 
-from scripts.guardrails import run_guardrailed_query
-from scripts.query import build_query_engine
-from scripts.rag import COLLECTION_NAME, get_required_env
+from src.guardrails import run_guardrailed_query
+from src.query import build_query_engine
+from src.rag import COLLECTION_NAME, get_required_env
 
 APP_TITLE = "Library Bot"
 APP_CAPTION = "Ask questions about the indexed website content."
@@ -68,7 +68,7 @@ def main() -> None:
     with st.sidebar:
         st.write(f"Collection: `{COLLECTION_NAME}`")
         st.write("Configuration is read from `.env`.")
-        st.write("Use `QUERY_TEXT` only as the CLI fallback for `python scripts/query.py`.")
+        st.write("Use `QUERY_TEXT` only as the CLI fallback for `python src/query.py`.")
 
     try:
         query_pipeline = get_cached_query_pipeline()

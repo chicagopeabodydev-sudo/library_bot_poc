@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts import query
+from src import query
 
 
 @dataclass
@@ -65,6 +65,11 @@ class FakeIndex:
         return self.retriever
 
 
+class FakeNode:
+    def __init__(self, metadata: dict[str, Any] | None = None) -> None:
+        self.metadata = metadata or {}
+
+
 def test_build_query_engine_configures_models_and_returns_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Build reusable retrieval and synthesis components for callers."""
     configure_calls: list[bool] = []
@@ -102,6 +107,40 @@ def test_retrieve_nodes_uses_supplied_retriever() -> None:
 
     assert result == ["node-a", "node-b"]
     assert retriever.queries == ["What are the library hours?"]
+
+
+def test_analyze_query_intent_detects_event_question_and_age_group() -> None:
+    """Detect event-oriented queries and normalize age-group hints."""
+    intent = query.analyze_query_intent("What kids events are happening this week?")
+
+    assert intent.is_event_query is True
+    assert intent.target_age_group == "kids"
+
+
+def test_select_nodes_for_query_prefers_matching_structured_event_nodes() -> None:
+    """Event questions should prefer structured event nodes with matching metadata."""
+    generic_node = FakeNode(metadata={"file_name": "hours.md"})
+    teen_event_node = FakeNode(
+        metadata={
+            "file_name": "teen-events.md",
+            "has_structured_events": True,
+            "event_target_age_groups": "teen",
+        }
+    )
+    kids_event_node = FakeNode(
+        metadata={
+            "file_name": "kids-events.md",
+            "has_structured_events": True,
+            "event_target_age_groups": "kids | teen",
+        }
+    )
+
+    selected = query.select_nodes_for_query(
+        "What kids events are happening?",
+        [generic_node, teen_event_node, kids_event_node],
+    )
+
+    assert selected == [kids_event_node]
 
 
 def test_run_query_retrieves_then_synthesizes() -> None:

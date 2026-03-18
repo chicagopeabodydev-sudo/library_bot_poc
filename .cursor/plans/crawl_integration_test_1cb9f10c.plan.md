@@ -15,20 +15,20 @@ The test will:
 - Use `CRAWL_URL`, `CRAWL_MAX_DEPTH`, `CRAWL_MAX_PAGES` from [.env](.env)
 - Write output to an isolated temp directory (not `website-markdown/`)
 - Assert that at least one `.md` file was written with non-empty content
-- **Not** touch [scripts/index.py](scripts/index.py), LlamaIndex, or Supabase
+- **Not** touch [src/index.py](src/index.py), LlamaIndex, or Supabase
 
 ## Current Structure
 
 ```mermaid
 flowchart LR
-    subgraph crawl [scripts/crawl.py]
+    subgraph crawl [src/crawl.py]
         A[main] --> B[load_dotenv]
         B --> C[Read CRAWL_* env]
         C --> D[AsyncWebCrawler.arun]
         D --> E[Write .md to OUTPUT_DIR]
     end
     
-    subgraph index [scripts/index.py - NOT RUN]
+    subgraph index [src/index.py - NOT RUN]
         F[Read website-markdown]
         F --> G[LlamaIndex + Supabase]
     end
@@ -42,7 +42,7 @@ The crawl script uses a hardcoded `OUTPUT_DIR = "website-markdown"` (line 24). T
 
 ### 1. Make output directory configurable in crawl.py
 
-Add support for `CRAWL_OUTPUT_DIR` environment variable in [scripts/crawl.py](scripts/crawl.py):
+Add support for `CRAWL_OUTPUT_DIR` environment variable in [src/crawl.py](src/crawl.py):
 
 - After `OUTPUT_DIR = "website-markdown"` (line 24), use: `output_dir = os.environ.get("CRAWL_OUTPUT_DIR", OUTPUT_DIR)`
 - Use `output_dir` instead of `OUTPUT_DIR` when building `output_path` (line 78)
@@ -90,7 +90,7 @@ Create `tests/integration/test_crawl.py` (or `tests/test_crawl_integration.py`):
 
 | File                                 | Action                                 |
 | ------------------------------------ | -------------------------------------- |
-| [scripts/crawl.py](scripts/crawl.py) | Add `CRAWL_OUTPUT_DIR` env var support |
+| [src/crawl.py](src/crawl.py) | Add `CRAWL_OUTPUT_DIR` env var support |
 | [requirements.txt](requirements.txt) | Add pytest, pytest-asyncio             |
 | `pyproject.toml` or `pytest.ini`     | Add pytest-asyncio config              |
 | `tests/integration/test_crawl.py`    | New integration test                   |

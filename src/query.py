@@ -29,9 +29,36 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from scripts.rag import COLLECTION_NAME, configure_llamaindex, get_required_env, load_vector_index
+from src.rag import COLLECTION_NAME, configure_llamaindex, get_required_env, load_vector_index
 
 SIMILARITY_TOP_K = 5
+EVENT_QUERY_TERMS = (
+    "event",
+    "events",
+    "program",
+    "programs",
+    "calendar",
+    "storytime",
+    "book club",
+    "author talk",
+    "game night",
+    "workshop",
+    "class",
+)
+TARGET_AGE_GROUP_ALIASES = {
+    "adult": "adult",
+    "adults": "adult",
+    "teen": "teen",
+    "teens": "teen",
+    "teenager": "teen",
+    "teenagers": "teen",
+    "young adult": "teen",
+    "young adults": "teen",
+    "kid": "kids",
+    "kids": "kids",
+    "child": "kids",
+    "children": "kids",
+}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,12 +75,85 @@ class QueryPipeline:
     response_synthesizer: Any
 
 
+@dataclass(frozen=True)
+class QueryIntent:
+    """Normalized query hints that can shape retrieval post-processing."""
+
+    is_event_query: bool
+    target_age_group: str | None = None
+
+
 def normalize_query_text(query_text: str) -> str:
     """Validate and normalize user query text."""
     normalized_query = query_text.strip()
     if not normalized_query:
         raise ValueError("Query text must not be empty")
     return normalized_query
+
+
+def analyze_query_intent(query_text: str) -> QueryIntent:
+    """Detect simple query intent hints for later metadata-aware retrieval."""
+    normalized_query = normalize_query_text(query_text).lower()
+    is_event_query = any(term in normalized_query for term in EVENT_QUERY_TERMS)
+
+    target_age_group = None
+    for alias, canonical in TARGET_AGE_GROUP_ALIASES.items():
+        if alias in normalized_query:
+            target_age_group = canonical
+            break
+
+    return QueryIntent(
+        is_event_query=is_event_query,
+        target_age_group=target_age_group,
+    )
+
+
+def _metadata_tokens(metadata: dict[str, Any], key: str) -> set[str]:
+    """Split pipe-delimited metadata fields into normalized tokens."""
+    raw_value = metadata.get(key)
+    if raw_value in (None, ""):
+        return set()
+
+    if isinstance(raw_value, str):
+        parts = raw_value.split("|")
+    else:
+        parts = [str(raw_value)]
+
+    return {part.strip().lower() for part in parts if str(part).strip()}
+
+
+def _node_metadata(source_node: Any) -> dict[str, Any]:
+    node = getattr(source_node, "node", source_node)
+    return dict(getattr(node, "metadata", {}) or {})
+
+
+def select_nodes_for_query(query_text: str, nodes: list[Any]) -> list[Any]:
+    """Prefer structured event nodes when the user is asking about events."""
+    intent = analyze_query_intent(query_text)
+    if not intent.is_event_query or not nodes:
+        return nodes
+
+    structured_nodes = [
+        node
+        for node in nodes
+        if bool(_node_metadata(node).get("has_structured_events"))
+    ]
+    if not structured_nodes:
+        return nodes
+
+    if intent.target_age_group:
+        age_group_matches = [
+            node
+            for node in structured_nodes
+            if intent.target_age_group in _metadata_tokens(
+                _node_metadata(node),
+                "event_target_age_groups",
+            )
+        ]
+        if age_group_matches:
+            return age_group_matches
+
+    return structured_nodes
 
 
 def build_retriever(*, database_url: str | None = None, similarity_top_k: int = SIMILARITY_TOP_K) -> Any:
@@ -134,6 +234,7 @@ def run_query(
         normalized_query,
         retriever=engine.retriever,
     )
+    nodes = select_nodes_for_query(normalized_query, nodes)
     return synthesize_response(
         normalized_query,
         nodes,
@@ -185,7 +286,7 @@ def run_guardrailed_query_for_cli(
     similarity_top_k: int = SIMILARITY_TOP_K,
 ) -> Any:
     """Run the shared guardrailed query flow for CLI callers."""
-    from scripts.guardrails import run_guardrailed_query
+    from src.guardrails import run_guardrailed_query
 
     return run_guardrailed_query(
         query_text,

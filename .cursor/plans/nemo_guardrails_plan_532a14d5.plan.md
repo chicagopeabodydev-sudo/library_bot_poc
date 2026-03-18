@@ -28,13 +28,13 @@ Add input guardrails for user questions, retrieval guardrails for RAG context, a
 
 ## Current Integration Points
 
-The current query path is concentrated in [scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py), where `run_query()` trims the user question and then immediately calls `engine.query(normalized_query)`. That single call currently performs both retrieval and answer generation, which means there is no clean interception point for retrieval guardrails.
+The current query path is concentrated in [src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py), where `run_query()` trims the user question and then immediately calls `engine.query(normalized_query)`. That single call currently performs both retrieval and answer generation, which means there is no clean interception point for retrieval guardrails.
 
 The primary UI entrypoint is [streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py), which calls `run_query(prompt, query_engine=query_engine)` and then renders both `str(response)` and `extract_sources(response)`.
 
 ## Proposed Architecture
 
-Introduce a shared guardrailed pipeline module, likely [scripts/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/guardrails.py) plus a guardrail config directory such as [guardrails/](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/guardrails/), and refactor querying into explicit phases:
+Introduce a shared guardrailed pipeline module, likely [src/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/guardrails.py) plus a guardrail config directory such as [guardrails/](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/guardrails/), and refactor querying into explicit phases:
 
 ```python
 validated_question = apply_input_rails(question)
@@ -51,7 +51,7 @@ A small shared result object should carry:
 - filtered source nodes or formatted source dicts
 - block status and user-facing fallback message
 
-This shared pipeline should be used by both [streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py) and [scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py) so the CLI and UI stay behaviorally aligned.
+This shared pipeline should be used by both [streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py) and [src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py) so the CLI and UI stay behaviorally aligned.
 
 ## Implementation Steps
 
@@ -86,7 +86,7 @@ Initial policy scope should stay narrow and testable:
 
 ### 3. Refactor retrieval and synthesis in query code
 
-Refactor [scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py) so retrieval and answer generation are separate operations instead of a single `engine.query(...)` call.
+Refactor [src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py) so retrieval and answer generation are separate operations instead of a single `engine.query(...)` call.
 
 Concretely:
 
@@ -95,11 +95,11 @@ Concretely:
 - add a synthesis helper that generates the final answer from the approved question plus approved nodes
 - preserve `extract_sources()` so the Streamlit app can continue rendering sources with minimal UI changes
 
-Keep [scripts/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py) as the place for shared LlamaIndex model/vector-store configuration, but consider adding helper constructors there if that keeps `query.py` smaller.
+Keep [src/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py) as the place for shared LlamaIndex model/vector-store configuration, but consider adding helper constructors there if that keeps `query.py` smaller.
 
 ### 4. Add a shared guardrailed pipeline
 
-Create a shared orchestration layer, preferably [scripts/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/guardrails.py), responsible for:
+Create a shared orchestration layer, preferably [src/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/guardrails.py), responsible for:
 
 - loading `RailsConfig` and `LLMRails`
 - applying input rails to the raw user question
@@ -119,7 +119,7 @@ Recommended default behavior:
 
 Update [streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py) to call the new shared guardrailed pipeline instead of calling `run_query()` directly.
 
-Update [scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py) CLI `main()` to use the same pipeline so `QUERY_TEXT` follows the same guardrail behavior as the UI.
+Update [src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py) CLI `main()` to use the same pipeline so `QUERY_TEXT` follows the same guardrail behavior as the UI.
 
 Preserve the existing user experience where possible:
 
@@ -150,10 +150,10 @@ Likely new or changed files:
 - [requirements.txt](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/requirements.txt)
 - [.env.example](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/.env.example)
 - [README.md](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/README.md)
-- [scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py)
-- [scripts/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py)
+- [src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py)
+- [src/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py)
 - [streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py)
-- [scripts/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/guardrails.py)
+- [src/guardrails.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/guardrails.py)
 - [guardrails/config.yml](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/guardrails/config.yml)
 - [guardrails/rails/input.co](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/guardrails/rails/input.co)
 - [guardrails/rails/output.co](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/guardrails/rails/output.co)
