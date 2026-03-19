@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from functools import lru_cache
 import os
@@ -17,15 +18,19 @@ except ImportError:
         return False
 
 from nemoguardrails import LLMRails, RailsConfig  # pyright: ignore[reportMissingImports]
-from nemoguardrails.rails.llm.options import RailStatus, RailType, RailsResult  # pyright: ignore[reportMissingImports]
+from nemoguardrails.rails.llm.options import RailStatus, RailsResult  # pyright: ignore[reportMissingImports]
 
 # Ensure project root is on path so we can import sibling modules/packages.
 _project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+sys.path = [path for path in sys.path if path != str(_project_root)]
+sys.path.insert(0, str(_project_root))
 
-from guardrails.actions import LIBRARY_TOPIC_HINTS
-from scripts import query
+from guardrails.actions import (
+    LIBRARY_TOPIC_HINTS,
+    check_library_input,
+    check_library_output,
+)
+from src import query
 
 DEFAULT_GUARDRAILS_DIR = "guardrails"
 DEFAULT_BLOCKED_INPUT_MESSAGE = "Sorry, I can only help with safe questions about the indexed library website."
@@ -64,14 +69,24 @@ def load_guardrails_app(config_dir: str | None = None) -> LLMRails:
     return LLMRails(config)
 
 
+def _run_guardrail_action(coro: Any) -> Any:
+    """Run an async custom guardrail action from the sync app entrypoints."""
+    return asyncio.run(coro)
+
+
 def apply_input_guardrails(question: str, *, config_dir: str | None = None) -> RailsResult:
-    """Run input rails against the raw user question."""
+    """Run the project input guardrail policy against the raw user question."""
     normalized_question = query.normalize_query_text(question)
-    rails = load_guardrails_app(config_dir)
-    return rails.check(
-        [{"role": "user", "content": normalized_question}],
-        rail_types=[RailType.INPUT],
+    is_allowed = _run_guardrail_action(
+        check_library_input({"last_user_message": normalized_question})
     )
+    if not is_allowed:
+        return RailsResult(
+            status=RailStatus.BLOCKED,
+            content=DEFAULT_BLOCKED_INPUT_MESSAGE,
+            rail="CheckLibraryInputAction",
+        )
+    return RailsResult(status=RailStatus.PASSED, content=normalized_question)
 
 
 def apply_output_guardrails(
@@ -80,16 +95,23 @@ def apply_output_guardrails(
     *,
     config_dir: str | None = None,
 ) -> RailsResult:
-    """Run output rails against a synthesized bot response."""
+    """Run the project output guardrail policy against a synthesized bot response."""
     normalized_question = query.normalize_query_text(question)
-    rails = load_guardrails_app(config_dir)
-    return rails.check(
-        [
-            {"role": "user", "content": normalized_question},
-            {"role": "assistant", "content": answer_text},
-        ],
-        rail_types=[RailType.OUTPUT],
+    is_allowed = _run_guardrail_action(
+        check_library_output(
+            {
+                "last_user_message": normalized_question,
+                "bot_message": answer_text,
+            }
+        )
     )
+    if not is_allowed:
+        return RailsResult(
+            status=RailStatus.BLOCKED,
+            content=DEFAULT_BLOCKED_OUTPUT_MESSAGE,
+            rail="CheckLibraryOutputAction",
+        )
+    return RailsResult(status=RailStatus.PASSED, content=answer_text)
 
 
 def _node_text(source_node: Any) -> str:
@@ -173,6 +195,7 @@ def run_guardrailed_query(
         similarity_top_k=similarity_top_k,
     )
     approved_nodes = filter_retrieved_nodes(retrieved_nodes)
+    approved_nodes = query.select_nodes_for_query(approved_question, approved_nodes)
 
     if not approved_nodes:
         return GuardrailedQueryResult(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -13,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts import query
+from src import query
 
 
 @dataclass
@@ -65,6 +66,11 @@ class FakeIndex:
         return self.retriever
 
 
+class FakeNode:
+    def __init__(self, metadata: dict[str, Any] | None = None) -> None:
+        self.metadata = metadata or {}
+
+
 def test_build_query_engine_configures_models_and_returns_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Build reusable retrieval and synthesis components for callers."""
     configure_calls: list[bool] = []
@@ -102,6 +108,40 @@ def test_retrieve_nodes_uses_supplied_retriever() -> None:
 
     assert result == ["node-a", "node-b"]
     assert retriever.queries == ["What are the library hours?"]
+
+
+def test_analyze_query_intent_detects_event_question_and_age_group() -> None:
+    """Detect event-oriented queries and normalize age-group hints."""
+    intent = query.analyze_query_intent("What kids events are happening this week?")
+
+    assert intent.is_event_query is True
+    assert intent.target_age_group == "kids"
+
+
+def test_select_nodes_for_query_prefers_matching_structured_event_nodes() -> None:
+    """Event questions should prefer structured event nodes with matching metadata."""
+    generic_node = FakeNode(metadata={"file_name": "hours.md"})
+    teen_event_node = FakeNode(
+        metadata={
+            "file_name": "teen-events.md",
+            "has_structured_events": True,
+            "event_target_age_groups": "teen",
+        }
+    )
+    kids_event_node = FakeNode(
+        metadata={
+            "file_name": "kids-events.md",
+            "has_structured_events": True,
+            "event_target_age_groups": "kids | teen",
+        }
+    )
+
+    selected = query.select_nodes_for_query(
+        "What kids events are happening?",
+        [generic_node, teen_event_node, kids_event_node],
+    )
+
+    assert selected == [kids_event_node]
 
 
 def test_run_query_retrieves_then_synthesizes() -> None:
@@ -216,6 +256,50 @@ def test_query_runs_and_prints_response(
         ("What are the library hours?", "postgresql://example", query.SIMILARITY_TOP_K)
     ]
     assert capsys.readouterr().out.strip() == "The library is open until 9 PM."
+
+
+def test_query_main_does_not_override_cli_query_text(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Preserve a shell-provided QUERY_TEXT instead of replacing it from .env."""
+    monkeypatch.setenv("QUERY_TEXT", "when is the library open on sundays")
+
+    def fake_load_dotenv(*, override: bool = True) -> None:
+        if override:
+            monkeypatch.setenv("QUERY_TEXT", "What is the library's phone number?")
+
+    monkeypatch.setattr(query, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(
+        query,
+        "get_required_env",
+        lambda name: {
+            "DATABASE_URL": "postgresql://example",
+            "QUERY_TEXT": os.environ["QUERY_TEXT"],
+        }[name],
+    )
+
+    result = type(
+        "FakeGuardrailedResult",
+        (),
+        {
+            "answer_text": "Hours answer",
+            "source_nodes": ["node-a"],
+            "blocked": False,
+            "block_stage": None,
+        },
+    )()
+    guardrailed_calls: list[str] = []
+    monkeypatch.setattr(
+        query,
+        "run_guardrailed_query_for_cli",
+        lambda query_text, *, database_url, similarity_top_k: guardrailed_calls.append(query_text) or result,
+    )
+
+    query.main()
+
+    assert guardrailed_calls == ["when is the library open on sundays"]
+    assert capsys.readouterr().out.strip() == "Hours answer"
 
 
 def test_query_main_prints_safe_fallback_when_guardrails_block(

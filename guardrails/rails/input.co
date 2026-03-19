@@ -1,5 +1,8 @@
 import core
 
+flow input rails $input_text
+  library input blocked terms
+
 flow library input blocked terms
   $is_allowed = await CheckLibraryInputAction()
 

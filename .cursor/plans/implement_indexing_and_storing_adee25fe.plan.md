@@ -52,7 +52,7 @@ flowchart LR
 
 ### 2. Indexer Script
 
-Create `scripts/index.py` (or `src/indexer.py` with `__main__`) that:
+Create `src/index.py` (or `src/indexer.py` with `__main__`) that:
 
 **Step 1 – Load markdown from `website-markdown/`:**
 
@@ -109,7 +109,7 @@ Create `scripts/index.py` (or `src/indexer.py` with `__main__`) that:
 
 | File               | Purpose                                                     |
 | ------------------ | ----------------------------------------------------------- |
-| `scripts/index.py` | Entry point: load markdown, create index, store in Supabase |
+| `src/index.py` | Entry point: load markdown, create index, store in Supabase |
 | `requirements.txt` | LlamaIndex, Supabase vector store, OpenAI embeddings        |
 | `.env.example`     | `DATABASE_URL`, `OPENAI_API_KEY`                            |
 

@@ -8,32 +8,128 @@ Reads configuration from environment variables:
   CRAWL_OUTPUT_DIR - Input directory for markdown files (default: website-markdown)
 """
 
+import json
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+from llama_index.core import Document, VectorStoreIndex
 from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
 from llama_index.core.schema import MetadataMode, TextNode
+from pydantic import ValidationError
 
 # Ensure project root is on path so we can import sibling script modules.
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from scripts.rag import COLLECTION_NAME, configure_llamaindex, create_storage_context, get_required_env
+from src.models import LibraryEventExtractionResult
+from src.rag import COLLECTION_NAME, configure_llamaindex, create_storage_context, get_required_env
 
 DEFAULT_INPUT_DIR = "website-markdown"
 EMBED_CHUNK_SIZE = 1024
 EMBED_CHUNK_OVERLAP = 100
+EXCLUDED_METADATA_KEYS = [
+    "source_path",
+    "event_sidecar_path",
+    "structured_events_json",
+]
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _unique_non_empty(values: list[str]) -> list[str]:
+    """Preserve order while removing empty duplicates."""
+    seen: set[str] = set()
+    unique_values: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_values.append(normalized)
+    return unique_values
+
+
+def load_event_sidecar(sidecar_path: Path) -> LibraryEventExtractionResult | None:
+    """Load and validate a same-basename event sidecar when present."""
+    if not sidecar_path.exists():
+        return None
+
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        return LibraryEventExtractionResult.model_validate(payload)
+    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+        logger.warning("Skipping invalid event sidecar %s: %s", sidecar_path, exc)
+        return None
+
+
+def build_event_metadata(extraction: LibraryEventExtractionResult) -> dict[str, Any]:
+    """Flatten structured event records into metadata-friendly fields."""
+    event_payloads = [event.model_dump(mode="json") for event in extraction.events]
+
+    return {
+        "has_structured_events": bool(event_payloads),
+        "event_count": len(event_payloads),
+        "event_titles": " | ".join(
+            _unique_non_empty([event["event_title"] for event in event_payloads])
+        ),
+        "event_types": " | ".join(
+            _unique_non_empty([event["event_type"] for event in event_payloads])
+        ),
+        "event_target_age_groups": " | ".join(
+            _unique_non_empty([event["target_age_group"] for event in event_payloads])
+        ),
+        "event_locations": " | ".join(
+            _unique_non_empty([event["location"] for event in event_payloads])
+        ),
+        "event_dates": " | ".join(
+            _unique_non_empty([str(event["date_time"]) for event in event_payloads])
+        ),
+        "structured_events_json": json.dumps(event_payloads, ensure_ascii=True),
+    }
+
+
+def load_markdown_documents(input_path: Path) -> list[Document]:
+    """Load markdown files and merge optional event sidecars into metadata."""
+    documents: list[Document] = []
+
+    for md_path in sorted(input_path.glob("*.md")):
+        text = md_path.read_text(encoding="utf-8").strip()
+        if not text:
+            logger.warning("Skipping empty markdown file %s", md_path)
+            continue
+
+        metadata: dict[str, Any] = {
+            "file_name": md_path.name,
+            "source_path": str(md_path),
+            "has_structured_events": False,
+            "event_count": 0,
+        }
+
+        sidecar_path = md_path.with_suffix(".json")
+        extraction = load_event_sidecar(sidecar_path)
+        if extraction and extraction.events:
+            metadata["event_sidecar_path"] = str(sidecar_path)
+            metadata.update(build_event_metadata(extraction))
+
+        documents.append(
+            Document(
+                text=text,
+                metadata=metadata,
+                excluded_embed_metadata_keys=list(EXCLUDED_METADATA_KEYS),
+                excluded_llm_metadata_keys=list(EXCLUDED_METADATA_KEYS),
+            )
+        )
+
+    return documents
 
 
 def chunk_nodes_for_embeddings(nodes: list) -> list[TextNode]:
@@ -94,10 +190,7 @@ def main() -> None:
         raise SystemExit(1)
 
     logger.info("Loading documents from %s (%d files)", input_path, len(md_files))
-    documents = SimpleDirectoryReader(
-        input_dir=str(input_path),
-        required_exts=[".md"],
-    ).load_data()
+    documents = load_markdown_documents(input_path)
 
     logger.info("Loaded %d documents", len(documents))
 

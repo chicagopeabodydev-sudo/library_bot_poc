@@ -37,16 +37,16 @@ Replace the hard-coded `QUERY_TEXT` flow with a simple local Streamlit interface
 
 ## Recommended Approach
 
-Build a single-file Streamlit app, likely `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py)`, and have it call the shared helpers in `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py)` directly.
+Build a single-file Streamlit app, likely `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/streamlit_app.py)`, and have it call the shared helpers in `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py)` directly.
 
-Do not make the UI shell out to `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py)` or keep depending on `QUERY_TEXT`. That script is CLI-oriented and prints to stdout; the UI should instead own user input and render the result itself.
+Do not make the UI shell out to `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py)` or keep depending on `QUERY_TEXT`. That script is CLI-oriented and prints to stdout; the UI should instead own user input and render the result itself.
 
 ```mermaid
 flowchart TD
     browser["Streamlit browser UI"] --> app["streamlit_app.py"]
     app --> sessionState["st.session_state.messages"]
     app --> cachedBackend["cached query engine"]
-    cachedBackend --> ragHelpers["scripts/rag.py"]
+    cachedBackend --> ragHelpers["src/rag.py"]
     ragHelpers --> vectorStore["SupabaseVectorStore website_docs"]
     vectorStore --> queryEngine["LlamaIndex query engine"]
     queryEngine --> answer["Response text"]
@@ -67,8 +67,8 @@ Refactor the query logic so the core behavior is callable from both CLI and UI.
 
 Best shape:
 
-- keep `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py)` as the terminal entrypoint
-- add a reusable helper such as `build_query_engine()` or `run_query(query_text: str)` in either `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/query.py)` or `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/scripts/rag.py)`
+- keep `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py)` as the terminal entrypoint
+- add a reusable helper such as `build_query_engine()` or `run_query(query_text: str)` in either `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/query.py)` or `[/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py](/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/src/rag.py)`
 
 That helper should:
 

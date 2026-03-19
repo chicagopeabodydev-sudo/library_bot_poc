@@ -2,7 +2,7 @@
 
 A RAG system with a chatbot. Content is crawled from a website and indexed for retrieval.
 
-NeMo Guardrails dependency and environment settings are included to prepare for adding input, retrieval, and output guardrails to the question-answering flow. The current runtime does not apply those guardrails yet.
+The runtime now applies NeMo Guardrails to the question-answering flow and can also extract structured library event data during crawling.
 
 ## Streamlit UI
 
@@ -17,11 +17,12 @@ The Streamlit app:
 - reads `DATABASE_URL` and `OPENAI_API_KEY` from `.env`
 - accepts each question in the browser instead of from `QUERY_TEXT`
 - queries the existing `website_docs` vector collection
+- prefers structured event results when the question is about library events
 - shows the answer and the retrieved source snippets
 
 Expected flow:
-1. `python scripts/crawl.py`
-2. `python scripts/index.py`
+1. `python src/crawl.py`
+2. `python src/index.py`
 3. `streamlit run streamlit_app.py`
 
 ## Crawling
@@ -40,16 +41,27 @@ playwright install chromium
 # Configure and run
 cp .env.example .env
 # Edit .env: set CRAWL_URL, CRAWL_MAX_DEPTH, CRAWL_MAX_PAGES
-python scripts/crawl.py
+python src/crawl.py
 ```
 
 Environment variables (see `.env.example`):
 - `CRAWL_URL` - Home page URL to crawl (required)
 - `CRAWL_MAX_DEPTH` - Max depth levels (default: 2)
 - `CRAWL_MAX_PAGES` - Max pages to crawl (default: 30)
-- `CRAWL_OUTPUT_DIR` - Directory for crawled markdown (default: `website-markdown`)
-- `CRAWL_CLEAR_OUTPUT` - Clear existing markdown before crawling (default: `1`)
+- `CRAWL_OUTPUT_DIR` - Directory for crawled markdown and event sidecars (default: `website-markdown`)
+- `CRAWL_CLEAR_OUTPUT` - Clear existing markdown and event sidecars before crawling (default: `1`)
 - `CRAWL_RUN_INDEX` - Run indexing automatically after crawl (default: `1`)
+- `OPENAI_API_KEY` - Also used for event extraction on event-like pages during crawl
+
+### Event Extraction During Crawl
+
+When a crawled page looks like it contains library event information, the crawl step performs an additional structured extraction pass using Crawl4AI plus the shared Pydantic event schema in `src/models/event.py`.
+
+For those event-like pages, the crawl output includes:
+- the normal `.md` file, enriched with a structured `Extracted Event Records` section for RAG
+- a same-basename `.json` sidecar file containing the extracted event records in machine-readable form
+
+For non-event pages, the crawl step still writes only markdown.
 
 ## Indexing
 
@@ -58,7 +70,7 @@ Load markdown from `website-markdown/`, create embeddings, and store in Supabase
 ```bash
 # After crawling (website-markdown/ must contain .md files)
 # Configure .env with DATABASE_URL and OPENAI_API_KEY
-python scripts/index.py
+python src/index.py
 ```
 
 Environment variables:
@@ -67,6 +79,8 @@ Environment variables:
 
 Get the connection string from Supabase: Project Settings → Database → Connection string (URI).
 
+During indexing, each markdown file can be paired with a same-basename event sidecar. When present, structured event fields are merged into document and chunk metadata so event queries can later prefer pages with extracted events.
+
 ## Querying
 
 Query the existing Supabase-backed index with LlamaIndex from the command line:
@@ -74,7 +88,7 @@ Query the existing Supabase-backed index with LlamaIndex from the command line:
 ```bash
 # After indexing
 # Configure .env with DATABASE_URL, OPENAI_API_KEY, and QUERY_TEXT
-python scripts/query.py
+python src/query.py
 ```
 
 Environment variables:
@@ -83,6 +97,11 @@ Environment variables:
 - `QUERY_TEXT` - Optional non-UI fallback question for the CLI script
 
 The CLI script is useful for quick debugging, but the primary question-answering workflow is the Streamlit UI. The current app uses a chat-style interface over single-turn retrieval and does not yet implement conversational memory or streaming.
+
+Event-aware querying behavior:
+- questions about events prefer retrieved nodes with structured event metadata
+- age-group hints such as `kids`, `teen`, or `adult` are used to narrow event results when matching metadata exists
+- if no structured event matches are available, the query flow falls back to normal retrieval results
 
 ## Guardrails Configuration
 
@@ -102,16 +121,20 @@ Planned guardrailed runtime flow:
 5. Generate an answer with the existing OpenAI-backed query model.
 6. Apply output guardrails to the final answer before returning it to the user.
 
-At this stage, the configuration surface is documented and available in `.env.example`, but the runtime query flow still behaves as described in the sections above.
+The current runtime applies the guardrailed flow in both the CLI and Streamlit UI.
 
 ## Tests
 
 Run tests from the project root:
 
 ```bash
-pytest tests/ -v
+"/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/.venv/bin/pytest" tests/ -v
 # or run only integration tests:
-pytest tests/integration/ -v
+"/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/.venv/bin/pytest" tests/integration/ -v
 ```
+
+Useful focused test runs:
+- `"/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/.venv/bin/pytest" tests/test_query.py tests/test_guardrails.py -v`
+- `"/Users/peabody/Documents/repos/library_bot_poc/library_bot_poc/.venv/bin/pytest" tests/test_crawl.py tests/test_index.py -v`
 
 The crawl integration test (`tests/integration/test_crawl.py`) performs real HTTP requests and requires `.env` with `CRAWL_URL` configured. If `.env` is missing or `CRAWL_URL` is not set, the test is skipped with a warning.

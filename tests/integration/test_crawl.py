@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from scripts.crawl import main
+from src.crawl import main
 
 
 def _is_crawl_configured() -> bool:
