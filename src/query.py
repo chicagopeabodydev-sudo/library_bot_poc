@@ -26,8 +26,8 @@ from llama_index.core.schema import QueryBundle  # pyright: ignore[reportMissing
 
 # Ensure project root is on path so we can import sibling script modules.
 _project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+sys.path = [path for path in sys.path if path != str(_project_root)]
+sys.path.insert(0, str(_project_root))
 
 from src.rag import COLLECTION_NAME, configure_llamaindex, get_required_env, load_vector_index
 
@@ -298,7 +298,8 @@ def run_guardrailed_query_for_cli(
 
 def main() -> None:
     """Query the existing vector store and print the response."""
-    load_dotenv(override=True)
+    # Let CLI-provided env vars such as QUERY_TEXT win over .env defaults.
+    load_dotenv(override=False)
 
     try:
         database_url = get_required_env("DATABASE_URL")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -255,6 +256,50 @@ def test_query_runs_and_prints_response(
         ("What are the library hours?", "postgresql://example", query.SIMILARITY_TOP_K)
     ]
     assert capsys.readouterr().out.strip() == "The library is open until 9 PM."
+
+
+def test_query_main_does_not_override_cli_query_text(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Preserve a shell-provided QUERY_TEXT instead of replacing it from .env."""
+    monkeypatch.setenv("QUERY_TEXT", "when is the library open on sundays")
+
+    def fake_load_dotenv(*, override: bool = True) -> None:
+        if override:
+            monkeypatch.setenv("QUERY_TEXT", "What is the library's phone number?")
+
+    monkeypatch.setattr(query, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(
+        query,
+        "get_required_env",
+        lambda name: {
+            "DATABASE_URL": "postgresql://example",
+            "QUERY_TEXT": os.environ["QUERY_TEXT"],
+        }[name],
+    )
+
+    result = type(
+        "FakeGuardrailedResult",
+        (),
+        {
+            "answer_text": "Hours answer",
+            "source_nodes": ["node-a"],
+            "blocked": False,
+            "block_stage": None,
+        },
+    )()
+    guardrailed_calls: list[str] = []
+    monkeypatch.setattr(
+        query,
+        "run_guardrailed_query_for_cli",
+        lambda query_text, *, database_url, similarity_top_k: guardrailed_calls.append(query_text) or result,
+    )
+
+    query.main()
+
+    assert guardrailed_calls == ["when is the library open on sundays"]
+    assert capsys.readouterr().out.strip() == "Hours answer"
 
 
 def test_query_main_prints_safe_fallback_when_guardrails_block(
